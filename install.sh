@@ -2,6 +2,7 @@
 set -euo pipefail
 
 REPO="https://raw.githubusercontent.com/nathabonfim59/claudimi/main"
+GITHUB_API="https://api.github.com/repos/nathabonfim59/claudimi"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claudimi}"
 
@@ -16,6 +17,39 @@ info()  { echo -e "${CYAN}  ->${RESET} $*"; }
 ok()    { echo -e "${GREEN}  ✓${RESET} $*"; }
 warn()  { echo -e "${YELLOW}  !${RESET} $*"; }
 die()   { echo -e "${RED}  ✗${RESET} $*"; exit 1; }
+
+# Compare two semver strings (strips a leading "v" and any pre-release
+# suffix). Echoes -1 if $1 < $2, 0 if equal, 1 if $1 > $2.
+semver_cmp() {
+    local IFS=.
+    local -a a b
+    read -ra a <<< "${1#v}"
+    read -ra b <<< "${2#v}"
+    local i x y
+    for i in 0 1 2; do
+        x=${a[i]:-0}; y=${b[i]:-0}
+        x=${x%%[^0-9]*}; y=${y%%[^0-9]*}
+        x=${x:-0}; y=${y:-0}
+        if (( x > y )); then echo 1; return; fi
+        if (( x < y )); then echo -1; return; fi
+    done
+    echo 0
+}
+
+# Echo the latest released version (no leading "v"), or nothing if it can't
+# be determined. Prefers the latest GitHub Release, falls back to tags.
+fetch_latest_version() {
+    local ver
+    ver=$(curl -fsSL "${GITHUB_API}/releases/latest" 2>/dev/null \
+        | grep -oE '"tag_name":[[:space:]]*"v?[0-9]+\.[0-9]+\.[0-9]+"' \
+        | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)
+    [ -n "$ver" ] && { echo "$ver"; return 0; }
+    ver=$(curl -fsSL "${GITHUB_API}/tags" 2>/dev/null \
+        | grep -oE '"name":[[:space:]]*"v?[0-9]+\.[0-9]+\.[0-9]+"' \
+        | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)
+    [ -n "$ver" ] && echo "$ver"
+    return 0
+}
 
 ask() {
     local prompt="$1"
@@ -42,11 +76,158 @@ ask_text() {
     echo "$answer"
 }
 
-# ── 1. API key ──────────────────────────────────────────────────────────
+# ── Flags (passed via `bash -s -- <flag>`; only affect update mode) ────────
+FORCE=0
+CHECK_ONLY=0
+for _arg in "$@"; do
+    case "$_arg" in
+        --force|-f) FORCE=1 ;;
+        --check|-c) CHECK_ONLY=1 ;;
+    esac
+done
+
+# ── Update mode: refresh an existing install without re-prompting ─────────
+# Re-running the installer on an already-installed system pulls the latest
+# claude-kimi wrapper and skill while leaving your settings, API key, and
+# memory links untouched. Fully non-interactive.
+if [ -f "${INSTALL_DIR}/claude-kimi" ]; then
+    echo ""
+    echo -e "${BOLD}  claudimi updater${RESET} (existing install detected)"
+    echo ""
+
+    if [ -n "${KIMI_API_KEY:-}" ]; then
+        ok "KIMI_API_KEY is set"
+    else
+        warn "KIMI_API_KEY is not set (add it to your shell config before running claude-kimi)"
+    fi
+
+    # ── Version check ────────────────────────────────────────────────────
+    installed_version=$(grep -oE 'CLAUDE_KIMI_VERSION="[0-9]+\.[0-9]+\.[0-9]+"' "${INSTALL_DIR}/claude-kimi" 2>/dev/null \
+        | head -1 | cut -d'"' -f2 || true)
+
+    if [ "${CHECK_ONLY}" -eq 1 ]; then
+        latest_version=$(fetch_latest_version)
+        echo ""
+        echo "  Installed: ${installed_version:-unknown}"
+        echo "  Latest:    ${latest_version:-unknown}"
+        if [ -n "$installed_version" ] && [ -n "$latest_version" ]; then
+            case "$(semver_cmp "$latest_version" "$installed_version")" in
+                1)  echo "  Status:    update available (v${installed_version} -> v${latest_version})" ;;
+                0)  echo "  Status:    up to date" ;;
+                -1) echo "  Status:    installed is newer than the latest release" ;;
+            esac
+        fi
+        exit 0
+    fi
+
+    if [ "${FORCE}" -ne 1 ]; then
+        latest_version=$(fetch_latest_version)
+        if [ -z "$latest_version" ]; then
+            echo ""
+            warn "Could not determine the latest version (no release found or network error)"
+            info "Proceeding with the update — use --check to inspect versions"
+        elif [ -z "$installed_version" ]; then
+            echo ""
+            info "Installed version unknown (pre-versioned install) — updating to v${latest_version}"
+        else
+            case "$(semver_cmp "$latest_version" "$installed_version")" in
+                0)
+                    ok "Already up to date (v${installed_version})"
+                    echo "  Run with --force to refresh the files anyway."
+                    exit 0
+                    ;;
+                -1)
+                    warn "Installed version (v${installed_version}) is newer than the latest release (v${latest_version})"
+                    echo "  Run with --force to refresh the files anyway."
+                    exit 0
+                    ;;
+                1)
+                    info "Update available: v${installed_version} -> v${latest_version}"
+                    ;;
+            esac
+        fi
+    fi
+
+    # Refresh the wrapper (this is where backend config lives)
+    echo ""
+    info "Updating claude-kimi to the latest version..."
+    mkdir -p "$INSTALL_DIR"
+    tmp=$(mktemp)
+    curl -fsSL "${REPO}/claude-kimi" -o "$tmp" || die "Failed to download claude-kimi"
+    chmod +x "$tmp"
+    mv "$tmp" "${INSTALL_DIR}/claude-kimi"
+    ok "Updated ${INSTALL_DIR}/claude-kimi"
+
+    # Ensure install dir is in PATH
+    case ":${PATH}:" in
+        *":${INSTALL_DIR}:"*) ;;
+        *)
+            warn "${INSTALL_DIR} is not in your PATH"
+            if [ -f "$HOME/.zshrc" ]; then
+                rc_file="$HOME/.zshrc"
+            else
+                rc_file="$HOME/.bashrc"
+            fi
+            echo "" >> "$rc_file"
+            echo "# Added by claudimi installer" >> "$rc_file"
+            echo "export PATH=\"\${PATH}:${INSTALL_DIR}\"" >> "$rc_file"
+            ok "Added ${INSTALL_DIR} to PATH in ${rc_file}"
+            export PATH="${PATH}:${INSTALL_DIR}"
+            ;;
+    esac
+
+    # Preserve user-customized settings; only seed if missing
+    echo ""
+    if [ -f "${CONFIG_DIR}/settings.json" ]; then
+        info "Kept existing ${CONFIG_DIR}/settings.json (untouched)"
+    else
+        mkdir -p "$CONFIG_DIR"
+        tmp=$(mktemp)
+        curl -fsSL "${REPO}/settings.json" -o "$tmp" || die "Failed to download settings.json"
+        mv "$tmp" "${CONFIG_DIR}/settings.json"
+        ok "Saved settings to ${CONFIG_DIR}/settings.json"
+    fi
+
+    # Refresh the teammate skill (idempotent: installs or updates to latest)
+    echo ""
+    if command -v npx &>/dev/null; then
+        info "Updating claude-kimi-teammate skill..."
+        # < /dev/tty: under `curl | bash`, stdin IS the script stream. Without
+        # this redirect npx drains the remaining script bytes as its stdin, so
+        # the command refresh and "done" banner below never execute.
+        if npx skills add nathabonfim59/claudimi -a claude-code -g -y < /dev/tty; then
+            ok "Skill updated"
+        else
+            warn "Skill update failed (continuing)"
+        fi
+    else
+        info "npx not found, skipping skill update"
+    fi
+
+    # Refresh the /claude-kimi-update slash command
+    mkdir -p "${CONFIG_DIR}/commands"
+    tmp=$(mktemp)
+    if curl -fsSL "${REPO}/commands/claude-kimi-update.md" -o "$tmp"; then
+        mv "$tmp" "${CONFIG_DIR}/commands/claude-kimi-update.md"
+        ok "Updated /claude-kimi-update command"
+    else
+        rm -f "$tmp"
+        warn "Could not refresh /claude-kimi-update command (skipped)"
+    fi
+
+    echo ""
+    ok "claudimi updated to the latest version!"
+    echo ""
+    exit 0
+fi
+
+# ── Fresh install (interactive) ──────────────────────────────────────────
 
 echo ""
 echo -e "${BOLD}  claudimi installer${RESET}"
 echo ""
+
+# ── 1. API key ──────────────────────────────────────────────────────────
 
 if [ -n "${KIMI_API_KEY:-}" ]; then
     ok "KIMI_API_KEY is already set"
@@ -72,7 +253,7 @@ else
     ok "Saved to ${rc_file}"
 fi
 
-# ── 2. Download claude-kimi ─────────────────────────────────────────────
+# ── 2. Download claude-kimi ──────────────────────────────────────────────
 
 echo ""
 info "Downloading claude-kimi to ${INSTALL_DIR}..."
@@ -154,7 +335,10 @@ if ask "Install the claude-kimi-teammate skill?"; then
     if command -v npx &>/dev/null; then
         info "Installing skill to Claude Code globally..."
         echo ""
-        npx skills add nathabonfim59/claudimi -a claude-code -g -y
+        # < /dev/tty: under `curl | bash`, stdin IS the script stream. Without
+        # this redirect npx drains the remaining script bytes as its stdin, so
+        # the /claude-kimi-update command below never gets installed.
+        npx skills add nathabonfim59/claudimi -a claude-code -g -y < /dev/tty
         ok "Skill installed"
     else
         warn "npx not found. Install Node.js first, then run:"
@@ -164,9 +348,22 @@ else
     info "Skipped skill install"
 fi
 
+# ── 6. claude-kimi-update command ────────────────────────────────────────
+
+echo ""
+mkdir -p "${CONFIG_DIR}/commands"
+tmp=$(mktemp)
+if curl -fsSL "${REPO}/commands/claude-kimi-update.md" -o "$tmp"; then
+    mv "$tmp" "${CONFIG_DIR}/commands/claude-kimi-update.md"
+    ok "Installed /claude-kimi-update command"
+else
+    rm -f "$tmp"
+    warn "Could not install /claude-kimi-update command (skipped)"
+fi
+
 # ── Done ─────────────────────────────────────────────────────────────────
 
 echo ""
 ok "All done! Run ${BOLD}claude-kimi${RESET} to get started."
-echo "  Restart your shell or run ${BOLD}source ~/.bashrc${RESET} (or ~/.zshrc) to pick up changes."
+echo -e "  Restart your shell or run ${BOLD}source ~/.bashrc${RESET} (or ~/.zshrc) to pick up changes."
 echo ""
