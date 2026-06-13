@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# Kimi Coding bindings
+export ANTHROPIC_API_KEY="${KIMI_API_KEY:-}"
+export ANTHROPIC_BASE_URL=https://api.kimi.com/coding/
+
+export CLAUDE_CODE_AUTO_COMPACT_WINDOW=262144
+
+export CLAUDE_CONFIG_DIR="${HOME}/.claudimi"
+mkdir -p "${CLAUDE_CONFIG_DIR}"
+
+# Run claude
+claude "$@"
