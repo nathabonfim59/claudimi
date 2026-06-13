@@ -1,5 +1,7 @@
 # Claudimi
 
+<img width="761" height="558" alt="image" src="https://github.com/user-attachments/assets/50989d79-efa4-499a-899b-5afe5ce1b8bc" />
+
 A wrapper script that runs [Claude Code](https://docs.anthropic.com/en/docs/claude-code) with [Kimi](https://www.kimi.com) as the backend provider, using Kimi's Anthropic-compatible API.
 
 **Why?** Kimi Code benefits let you use the same Claude Code experience through Kimi's endpoint. This wrapper lets you use it as a drop-in replacement, including spawning teammates for parallel work.
