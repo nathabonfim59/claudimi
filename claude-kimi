@@ -18,6 +18,8 @@ done
 export ANTHROPIC_API_KEY="${KIMI_API_KEY:-}"
 export ANTHROPIC_BASE_URL=https://api.kimi.com/coding/
 
+export ANTHROPIC_DEFAULT_OPUS_MODEL="kimi-k2.7-code"
+
 export CLAUDE_CODE_AUTO_COMPACT_WINDOW=262144
 
 export CLAUDE_CONFIG_DIR="${HOME}/.claudimi"
