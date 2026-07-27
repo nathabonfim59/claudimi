@@ -2,7 +2,7 @@
 
 # claudimi version — single source of truth; keep in sync with git tags
 # (CI verifies the tag matches this on release). Bump here, then tag vX.Y.Z.
-CLAUDE_KIMI_VERSION="1.0.3"
+CLAUDE_KIMI_VERSION="1.0.4"
 
 # Handle our own flags before delegating to claude
 for arg in "$@"; do
@@ -18,9 +18,13 @@ done
 export ANTHROPIC_API_KEY="${KIMI_API_KEY:-}"
 export ANTHROPIC_BASE_URL=https://api.kimi.com/coding/
 
-export ANTHROPIC_DEFAULT_OPUS_MODEL="kimi-k2.7-code"
+# Tier mapping: kimi-k3 (1M) as opus, kimi-k2.7-code as sonnet, kimi-k2.6 as haiku
+export ANTHROPIC_DEFAULT_OPUS_MODEL="kimi-k3[1m]"
+export ANTHROPIC_DEFAULT_SONNET_MODEL="kimi-k2.7-code"
+export ANTHROPIC_DEFAULT_HAIKU_MODEL="kimi-k2.6"
 
-export CLAUDE_CODE_AUTO_COMPACT_WINDOW=262144
+# kimi-k3[1m] supports a 1M context window; the [1m] suffix enables it.
+export CLAUDE_CODE_AUTO_COMPACT_WINDOW=1048576
 
 export CLAUDE_CONFIG_DIR="${HOME}/.claudimi"
 mkdir -p "${CLAUDE_CONFIG_DIR}"

@@ -11,10 +11,16 @@ A wrapper script that runs [Claude Code](https://docs.anthropic.com/en/docs/clau
 `claude-kimi` is a thin shell wrapper around the official `claude` CLI that:
 
 - Points the Anthropic SDK at Kimi's API (`https://api.kimi.com/coding/`)
-- Uses your `KIMI_API_KEY` as the Anthropic API key
+- Maps Kimi models to Claude model tiers so existing prompts and tooling work unchanged
 - Isolates all configuration under `~/.claudimi` instead of `~/.claude`
 
-Kimi's endpoint handles model routing automatically, so existing Claude Code prompts and model selectors keep working unchanged.
+## Model mapping
+
+| Claude tier  | Kimi model     |
+|--------------|----------------|
+| Opus         | kimi-k3 (1M)   |
+| Sonnet       | kimi-k2.7-code |
+| Haiku        | kimi-k2.6      |
 
 ## Requirements
 
