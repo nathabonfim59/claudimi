@@ -10,17 +10,34 @@ A wrapper script that runs [Claude Code](https://docs.anthropic.com/en/docs/clau
 
 `claude-kimi` is a thin shell wrapper around the official `claude` CLI that:
 
-- Points the Anthropic SDK at Kimi's API (`https://api.kimi.com/coding/`)
+- Points the Anthropic SDK at Kimi's API (`https://api.kimi.ai/coding/`)
 - Maps Kimi models to Claude model tiers so existing prompts and tooling work unchanged
 - Isolates all configuration under `~/.claudimi` instead of `~/.claude`
 
 ## Model mapping
 
-| Claude tier  | Kimi model     |
-|--------------|----------------|
-| Opus         | kimi-k3 (1M)   |
-| Sonnet       | kimi-k2.7-code |
-| Haiku        | kimi-k2.6      |
+K3 powers the top tiers with a 1M-token context window, each with its own default thinking effort. Sonnet runs the same K3 pinned to 256k context at low thinking for speed, and Haiku runs `kimi-for-coding` (silently upgraded in place to K2.8 Preview, still 1M context):
+
+| Claude tier | Kimi model       | Default effort | Kimi thinking |
+|-------------|------------------|----------------|---------------|
+| Opus        | k3 (1M)          | `high`         | high          |
+| Sonnet      | k3-256k          | `low`          | low           |
+| Haiku       | kimi-for-coding  | `low`          | low           |
+| Fable       | k3 (1M)          | `xhigh`        | max           |
+
+`kimi-for-coding-highspeed` (the fast Kimi variant, 256k context, Pro+ plans only) is also selectable in the `/model` picker as **Kimi Highspeed**.
+
+**Sonnet's 256k pin:** the wrapper's context env vars stay at 1M for the other tiers, so Claude Code believes Sonnet has 1M too — if Kimi enforces the pin, very long Sonnet sessions could error past 256k. Switch to Opus (or `/model`) for marathon sessions.
+
+### How effort control works
+
+- Kimi converts Claude Code's effort values to K3 thinking levels: `low` becomes low, `medium` and `high` become high, `xhigh` and `max` become max. The wrapper sets `CLAUDE_CODE_ALWAYS_ENABLE_EFFORT=1` because Claude Code doesn't recognize Kimi model IDs as effort-capable and would skip the parameter without it. Per-tier defaults are set in `modelSettings` in `settings.json`.
+- The three K3 tiers need three distinct `modelSettings` keys to carry three effort levels. Claude Code strips the `[1m]` suffix before sending (it's only a client-side context-window hint), so `k3` and `k3[1m]` reach Kimi as the same model but stay distinct keys — Fable uses the bare ID, and `CLAUDE_CODE_MAX_CONTEXT_TOKENS=1048576` keeps it on the 1M window. Sonnet uses the `k3-256k` pin as its third key.
+- `/effort` still works in-session and overrides the tier default for the current model; confirming with <kbd>Enter</kbd> saves your choice back into `modelSettings`.
+
+### Auto mode classifier checks
+
+Auto mode's no-charge classifier checks run on Anthropic's servers, so they can't work through Kimi's gateway. claudimi sets `CLAUDE_CODE_AUTO_MODE_SERVER=0` to stop Claude Code from asking for them, which also suppresses the "this session isn't eligible" notice. Auto mode keeps working. Classifier checks run as regular model requests billed to your Kimi usage, never to an Anthropic subscription, because every request, classifier checks included, routes through the Kimi key.
 
 ## Requirements
 

@@ -2,7 +2,7 @@
 
 # claudimi version — single source of truth; keep in sync with git tags
 # (CI verifies the tag matches this on release). Bump here, then tag vX.Y.Z.
-CLAUDE_KIMI_VERSION="1.0.4"
+CLAUDE_KIMI_VERSION="1.1.0"
 
 # Handle our own flags before delegating to claude
 for arg in "$@"; do
@@ -16,15 +16,47 @@ done
 
 # Kimi Coding bindings
 export ANTHROPIC_API_KEY="${KIMI_API_KEY:-}"
-export ANTHROPIC_BASE_URL=https://api.kimi.com/coding/
+export ANTHROPIC_BASE_URL=https://api.kimi.ai/coding/
 
-# Tier mapping: kimi-k3 (1M) as opus, kimi-k2.7-code as sonnet, kimi-k2.6 as haiku
-export ANTHROPIC_DEFAULT_OPUS_MODEL="kimi-k3[1m]"
-export ANTHROPIC_DEFAULT_SONNET_MODEL="kimi-k2.7-code"
-export ANTHROPIC_DEFAULT_HAIKU_MODEL="kimi-k2.6"
+# Tier mapping — K3 powers the top tiers, K2.8 Preview (kimi-for-coding)
+# backs the fast haiku tier.
+#
+# Claude Code strips the "[1m]" suffix before sending (it's a client-side
+# context-window hint), so "k3" and "k3[1m]" reach Kimi as the same model
+# but stay distinct modelSettings keys in settings.json. Per-tier effort
+# defaults need distinct keys, and K3 wears three of them: fable runs the
+# bare ID at xhigh, opus carries the [1m] suffix at high, and sonnet uses
+# the k3-256k pin (same model, 256k context) at low for speed.
+# CLAUDE_CODE_MAX_CONTEXT_TOKENS below restores fable's bare-ID 1M window.
+export ANTHROPIC_DEFAULT_OPUS_MODEL="k3[1m]"
+export ANTHROPIC_DEFAULT_SONNET_MODEL="k3-256k"
+export ANTHROPIC_DEFAULT_HAIKU_MODEL="kimi-for-coding"
+export ANTHROPIC_DEFAULT_FABLE_MODEL="k3"
 
-# kimi-k3[1m] supports a 1M context window; the [1m] suffix enables it.
-export CLAUDE_CODE_AUTO_COMPACT_WINDOW=1048576
+# Kimi's highspeed variant stays selectable in the /model picker
+# (256k context, Pro+ plans only)
+export ANTHROPIC_CUSTOM_MODEL_OPTION="kimi-for-coding-highspeed"
+export ANTHROPIC_CUSTOM_MODEL_OPTION_NAME="Kimi Highspeed"
+export ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION="Fast Kimi variant (256k context)"
+export ANTHROPIC_CUSTOM_MODEL_OPTION_SUPPORTED_CAPABILITIES="effort"
+
+# Kimi IDs are unknown to Claude Code, so effort must be forced on for the
+# per-tier levels in settings.json (modelSettings) to be sent at all.
+# Kimi maps them: low -> low, medium/high -> high, xhigh/max -> max.
+export CLAUDE_CODE_ALWAYS_ENABLE_EFFORT=1
+
+# Auto mode's no-charge server-side classifier checks are an Anthropic-server
+# feature and can't work behind Kimi's gateway (the "this session isn't
+# eligible" notice). This stops Claude Code from asking for them; classifier
+# checks still run as regular model requests billed to Kimi — never an
+# Anthropic subscription.
+export CLAUDE_CODE_AUTO_MODE_SERVER=0
+
+# 1M context for opus/fable/haiku (k3[1m], bare k3, and kimi-for-coding all
+# serve 1M). Sonnet's k3-256k pin really caps at 256k; switch tiers for
+# marathon sessions.
+export CLAUDE_CODE_MAX_CONTEXT_TOKENS="1048576"
+export CLAUDE_CODE_AUTO_COMPACT_WINDOW="1048576"
 
 export CLAUDE_CONFIG_DIR="${HOME}/.claudimi"
 mkdir -p "${CLAUDE_CONFIG_DIR}"

@@ -7,7 +7,21 @@
     "commit": "",
     "pr": ""
   },
-  "model": "opus",
+  "model": "opus[1m]",
+  "modelSettings": {
+    "k3[1m]": {
+      "effortLevel": "high"
+    },
+    "k3": {
+      "effortLevel": "xhigh"
+    },
+    "k3-256k": {
+      "effortLevel": "low"
+    },
+    "kimi-for-coding": {
+      "effortLevel": "low"
+    }
+  },
   "statusLine": {
     "type": "command",
     "command": "~/.local/bin/claude-statusline"
