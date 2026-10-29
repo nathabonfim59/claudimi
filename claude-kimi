@@ -18,20 +18,20 @@ done
 export ANTHROPIC_API_KEY="${KIMI_API_KEY:-}"
 export ANTHROPIC_BASE_URL=https://api.kimi.ai/coding/
 
-# Tier mapping — K3 powers the top tiers, K2.8 Preview (kimi-for-coding)
-# backs the fast haiku tier.
+# Tier mapping — K3 powers the opus/sonnet tiers, K3.1 Pro the fable tier,
+# and K2.8 Preview (kimi-for-coding) backs the fast haiku tier.
 #
 # Claude Code strips the "[1m]" suffix before sending (it's a client-side
 # context-window hint), so "k3" and "k3[1m]" reach Kimi as the same model
 # but stay distinct modelSettings keys in settings.json. Per-tier effort
-# defaults need distinct keys, and K3 wears three of them: fable runs the
-# bare ID at xhigh, opus carries the [1m] suffix at high, and sonnet uses
-# the k3-256k pin (same model, 256k context) at low for speed.
-# CLAUDE_CODE_MAX_CONTEXT_TOKENS below restores fable's bare-ID 1M window.
+# defaults need distinct keys: opus carries the [1m] suffix at high, sonnet
+# uses the k3-256k pin (same model, 256k context) at low for speed, and
+# fable runs the K3.1 Pro flagship at xhigh.
+# CLAUDE_CODE_MAX_CONTEXT_TOKENS below keeps every tier on the 1M window.
 export ANTHROPIC_DEFAULT_OPUS_MODEL="k3[1m]"
 export ANTHROPIC_DEFAULT_SONNET_MODEL="k3-256k"
 export ANTHROPIC_DEFAULT_HAIKU_MODEL="kimi-for-coding"
-export ANTHROPIC_DEFAULT_FABLE_MODEL="k3"
+export ANTHROPIC_DEFAULT_FABLE_MODEL="kimi-k3.1-pro"
 
 # Kimi's highspeed variant stays selectable in the /model picker
 # (256k context, Pro+ plans only)
@@ -52,8 +52,8 @@ export CLAUDE_CODE_ALWAYS_ENABLE_EFFORT=1
 # Anthropic subscription.
 export CLAUDE_CODE_AUTO_MODE_SERVER=0
 
-# 1M context for opus/fable/haiku (k3[1m], bare k3, and kimi-for-coding all
-# serve 1M). Sonnet's k3-256k pin really caps at 256k; switch tiers for
+# 1M context for opus/fable/haiku (k3[1m], kimi-k3.1-pro, and kimi-for-coding
+# all serve 1M). Sonnet's k3-256k pin really caps at 256k; switch tiers for
 # marathon sessions.
 export CLAUDE_CODE_MAX_CONTEXT_TOKENS="1048576"
 export CLAUDE_CODE_AUTO_COMPACT_WINDOW="1048576"

@@ -16,14 +16,14 @@ Kimi Code benefits include Claude Code access through Kimi's endpoint. This wrap
 
 ## Model mapping
 
-The top tiers run K3 with a 1M-token context window, each with its own default thinking effort. Sonnet runs the same K3 pinned to 256k context at low thinking; Haiku runs `kimi-for-coding` (upgraded in place to K2.8 Preview, still 1M context):
+Fable runs the K3.1 Pro flagship (`kimi-k3.1-pro`, 1M context) at max thinking. Opus runs K3 with a 1M-token context window at high thinking, Sonnet runs the same K3 pinned to 256k context at low thinking, and Haiku runs `kimi-for-coding` (upgraded in place to K2.8 Preview, still 1M context):
 
 | Claude tier | Kimi model       | Default effort | Kimi thinking |
 |-------------|------------------|----------------|---------------|
 | Opus        | k3 (1M)          | `high`         | high          |
 | Sonnet      | k3-256k          | `low`          | low           |
 | Haiku       | kimi-for-coding  | `low`          | low           |
-| Fable       | k3 (1M)          | `xhigh`        | max           |
+| Fable       | kimi-k3.1-pro (1M) | `xhigh`      | max           |
 
 `kimi-for-coding-highspeed` (the fast variant, 256k context, Pro+ plans only) is also selectable in the `/model` picker as **Kimi Highspeed**.
 
@@ -32,7 +32,7 @@ The top tiers run K3 with a 1M-token context window, each with its own default t
 ### How effort control works
 
 - Kimi converts Claude Code's effort values to K3 thinking levels: `low` becomes low, `medium` and `high` become high, `xhigh` and `max` become max. The wrapper sets `CLAUDE_CODE_ALWAYS_ENABLE_EFFORT=1` because Claude Code doesn't recognize Kimi model IDs as effort-capable and would skip the parameter without it. Per-tier defaults live in `modelSettings` in `settings.json`.
-- The three K3 tiers need three distinct `modelSettings` keys to carry three effort levels. Claude Code strips the `[1m]` suffix before sending (it's only a client-side context-window hint), so `k3` and `k3[1m]` reach Kimi as the same model but stay distinct keys. Fable uses the bare ID, and `CLAUDE_CODE_MAX_CONTEXT_TOKENS=1048576` keeps it on the 1M window; Sonnet uses the `k3-256k` pin as its third key.
+- The tiers need distinct `modelSettings` keys to carry distinct effort levels. Claude Code strips the `[1m]` suffix before sending (it's only a client-side context-window hint), so `k3` and `k3[1m]` reach Kimi as the same model but stay distinct keys. Opus uses the `[1m]` suffix, Sonnet uses the `k3-256k` pin, and Fable gets its own key as `kimi-k3.1-pro`.
 - `/effort` overrides the tier default for the current model in-session; confirming with <kbd>Enter</kbd> saves the choice back into `modelSettings`.
 
 ### Auto mode classifier checks

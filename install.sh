@@ -177,47 +177,56 @@ if [ -f "${INSTALL_DIR}/claude-kimi" ]; then
     esac
 
     # Preserve user-customized settings; only seed if missing. When the file
-    # already exists but predates modelSettings (per-tier effort levels),
-    # merge just that key in so existing installs pick up the new defaults.
+    # already exists, sync modelSettings key-by-key: add keys the user lacks
+    # (new tiers), drop stale ones (renamed/removed models), and keep the
+    # user's effortLevel for keys present in both (it may have been changed
+    # via /effort).
     echo ""
     if [ -f "${CONFIG_DIR}/settings.json" ]; then
-        if grep -q '"modelSettings"' "${CONFIG_DIR}/settings.json" 2>/dev/null; then
-            info "Kept existing ${CONFIG_DIR}/settings.json (untouched)"
-        else
-            fresh=$(mktemp)
-            merged=$(mktemp)
-            if ! curl -fsSL "${REPO}/settings.json" -o "$fresh"; then
-                warn "Could not download settings.json — left ${CONFIG_DIR}/settings.json untouched"
-                rm -f "$fresh" "$merged"
-            elif command -v jq &>/dev/null; then
-                if jq --slurpfile new "$fresh" '.modelSettings = $new[0].modelSettings' \
+        fresh=$(mktemp)
+        merged=$(mktemp)
+        if ! curl -fsSL "${REPO}/settings.json" -o "$fresh"; then
+            warn "Could not download settings.json — left ${CONFIG_DIR}/settings.json untouched"
+            rm -f "$fresh" "$merged"
+        elif command -v jq &>/dev/null; then
+            if jq --slurpfile new "$fresh" '
+                    (.modelSettings // {}) as $old
+                    | .modelSettings = ($new[0].modelSettings
+                        | with_entries(.value = (.value + ($old[.key] // {}))))' \
                         "${CONFIG_DIR}/settings.json" > "$merged"; then
-                    mv "$merged" "${CONFIG_DIR}/settings.json"
-                    ok "Added per-tier effort levels (modelSettings) to ${CONFIG_DIR}/settings.json"
-                fi
-                rm -f "$fresh" "$merged"
-            elif command -v python3 &>/dev/null; then
-                if python3 - "${CONFIG_DIR}/settings.json" "$fresh" "$merged" <<'PY'
+                mv "$merged" "${CONFIG_DIR}/settings.json"
+                ok "Synced per-tier effort levels (modelSettings) in ${CONFIG_DIR}/settings.json"
+            else
+                warn "jq merge failed — left ${CONFIG_DIR}/settings.json untouched"
+            fi
+            rm -f "$fresh" "$merged"
+        elif command -v python3 &>/dev/null; then
+            if python3 - "${CONFIG_DIR}/settings.json" "$fresh" "$merged" <<'PY'
 import json, sys
 with open(sys.argv[2]) as f:
     new = json.load(f)
 with open(sys.argv[1]) as f:
     settings = json.load(f)
-settings["modelSettings"] = new["modelSettings"]
+old = settings.get("modelSettings") or {}
+merged = {}
+for key, default in new["modelSettings"].items():
+    merged[key] = {**default, **(old.get(key) or {})}
+settings["modelSettings"] = merged
 with open(sys.argv[3], "w") as f:
     json.dump(settings, f, indent=2)
     f.write("\n")
 PY
-                then
-                    mv "$merged" "${CONFIG_DIR}/settings.json"
-                    ok "Added per-tier effort levels (modelSettings) to ${CONFIG_DIR}/settings.json"
-                fi
-                rm -f "$fresh" "$merged"
+            then
+                mv "$merged" "${CONFIG_DIR}/settings.json"
+                ok "Synced per-tier effort levels (modelSettings) in ${CONFIG_DIR}/settings.json"
             else
-                warn "Found no jq or python3 — add this to ${CONFIG_DIR}/settings.json for per-tier effort levels:"
-                sed -n '/"modelSettings"/,/^  },/p' "$fresh"
-                rm -f "$fresh" "$merged"
+                warn "python3 merge failed — left ${CONFIG_DIR}/settings.json untouched"
             fi
+            rm -f "$fresh" "$merged"
+        else
+            warn "Found no jq or python3 — replace the modelSettings block in ${CONFIG_DIR}/settings.json with:"
+            sed -n '/"modelSettings"/,/^  },/p' "$fresh"
+            rm -f "$fresh" "$merged"
         fi
     else
         mkdir -p "$CONFIG_DIR"
